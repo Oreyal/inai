@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INAI 売上管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- サイドバー -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="logo">
+        <span class="logo-mark">INAI</span>
+        <span class="logo-sub">売上管理</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="guests">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 11h-6"/></svg>
+          来客情報
+        </a>
+        <a href="#" class="nav-item" data-page="dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          ダッシュボード
+        </a>
+        <!-- 来店入力ページは来客情報に統合済み -->
+        <a href="#" class="nav-item" data-page="customers">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          顧客管理
+        </a>
+        <a href="#" class="nav-item" data-page="calendar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          営業カレンダー
+        </a>
+        <a href="#" class="nav-item" data-page="settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          設定
+        </a>
+      </nav>
+    </div>
+    <div class="sidebar-bottom">
+      <div class="sidebar-status" id="connection-status">
+        <span class="status-dot offline"></span>
+        <span>サンプルデータ</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- メインコンテンツ -->
+  <div class="main-wrapper">
+
+    <!-- ===== 来客情報 ===== -->
+    <div class="page active" id="page-guests">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1>来客情報</h1>
+        </div>
+      </header>
+      <main>
+        <!-- 当日来客情報 -->
+        <section class="guest-section">
+          <div class="guest-section-header">
+            <div class="guest-section-title">
+              <span class="guest-section-dot guest-section-dot--today"></span>
+              <h2>当日来客情報</h2>
+              <span class="guest-section-date" id="guests-date-label"></span>
+            </div>
+            <span class="guest-section-count" id="guests-total-count"></span>
+          </div>
+          <div id="guests-list"></div>
+        </section>
+
+        <!-- CSV取り込み -->
+        <section class="guest-csv-section" id="tc-import-section-guests">
+          <div class="guest-csv-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            <div>
+              <h3 class="guest-csv-title">翌日の予約を取り込み</h3>
+              <p class="guest-csv-desc">TableCheckからCSVを貼り付け or ドラッグ</p>
+            </div>
+          </div>
+          <div class="guest-csv-body">
+            <div class="guest-csv-file-row">
+              <label class="btn btn-secondary guest-csv-file-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                CSVファイルを選択
+                <input type="file" id="tc-csv-file-guests" accept=".csv" style="display:none">
+              </label>
+              <span id="tc-file-name-guests" class="guest-csv-filename">ファイル未選択</span>
+            </div>
+            <div id="tc-drop-zone-guests" class="guest-csv-dropzone">
+              <p class="guest-csv-drop-label">CSVファイルをここにドラッグ＆ドロップ</p>
+              <textarea id="tc-csv-input-guests" rows="2" placeholder="または、CSVデータをここに貼り付け..." class="guest-csv-textarea"></textarea>
+            </div>
+            <div class="guest-csv-actions">
+              <button class="btn btn-primary" id="btn-tc-import-guests" type="button">取り込み</button>
+              <span id="tc-import-status-guests" class="guest-csv-status"></span>
+            </div>
+            <div id="tc-import-preview-guests" class="guest-csv-preview" style="display:none"></div>
+          </div>
+        </section>
+
+        <!-- 翌日来客情報 -->
+        <section class="guest-section">
+          <div class="guest-section-header">
+            <div class="guest-section-title">
+              <span class="guest-section-dot guest-section-dot--tomorrow"></span>
+              <h2>翌日来客情報</h2>
+              <span class="guest-section-date" id="tomorrow-date-label"></span>
+            </div>
+            <span class="guest-section-count" id="tomorrow-total-count"></span>
+          </div>
+          <div id="tomorrow-guests-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ===== ダッシュボード ===== -->
+    <div class="page" id="page-dashboard">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1>ダッシュボード</h1>
+        </div>
+      </header>
+      <main>
+        <!-- ダッシュボード 2カラムレイアウト -->
+        <section class="dash-layout">
+          <!-- 左側: 3行のKPIカード -->
+          <div class="dash-left">
+            <!-- 1行目: 昨日・週次・月次売上 -->
+            <div class="dash-row dash-row-3">
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">昨日売上</span>
+                  <div class="kpi-icon kpi-icon--revenue">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-yesterday">-</div>
+                <div class="kpi-sub"><span id="kpi-yesterday-sub">-</span></div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">週次売上</span>
+                  <div class="kpi-icon kpi-icon--revenue">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-weekly">-</div>
+                <div class="kpi-sub"><span id="kpi-weekly-sub">-</span></div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">月次売上</span>
+                  <div class="kpi-icon kpi-icon--revenue">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-monthly">-</div>
+                <div class="kpi-sub"><span id="kpi-monthly-sub">-</span></div>
+              </div>
+            </div>
+
+            <!-- 2行目: 客単価・残営業日 -->
+            <div class="dash-row dash-row-2">
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">客単価</span>
+                  <div class="kpi-icon kpi-icon--unit">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-unit-price">-</div>
+                <div class="kpi-sub"><span id="kpi-unit-sub">-</span></div>
+              </div>
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-label">残営業日</span>
+                  <div class="kpi-icon kpi-icon--guest">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-remaining-days">-</div>
+                <div class="kpi-sub"><span id="kpi-remaining-sub">-</span></div>
+              </div>
+            </div>
+
+            <!-- 3行目: リピート率 -->
+            <div class="dash-row dash-row-3">
+              <div class="kpi-card kpi-card--repeat">
+                <div class="kpi-header">
+                  <span class="kpi-label">2回リピート率</span>
+                  <div class="kpi-icon kpi-icon--balance">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-repeat2">-</div>
+                <div class="kpi-sub"><span id="kpi-repeat2-sub">-</span></div>
+              </div>
+              <div class="kpi-card kpi-card--repeat">
+                <div class="kpi-header">
+                  <span class="kpi-label">3回リピート率</span>
+                  <div class="kpi-icon kpi-icon--balance">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-repeat3">-</div>
+                <div class="kpi-sub"><span id="kpi-repeat3-sub">-</span></div>
+              </div>
+              <div class="kpi-card kpi-card--repeat">
+                <div class="kpi-header">
+                  <span class="kpi-label">4回以上リピート率</span>
+                  <div class="kpi-icon kpi-icon--balance">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+                  </div>
+                </div>
+                <div class="kpi-value" id="kpi-repeat4">-</div>
+                <div class="kpi-sub"><span id="kpi-repeat4-sub">-</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右側: 年間売上ボックス -->
+          <div class="dash-right">
+            <div class="kpi-card kpi-card--yearly">
+              <div class="kpi-yearly-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+              </div>
+              <span class="kpi-label" style="margin-bottom:8px;display:block">年間売上</span>
+              <div class="kpi-value kpi-value--yearly" id="kpi-yearly">-</div>
+              <div class="kpi-sub" style="margin-top:12px"><span id="kpi-yearly-sub">-</span></div>
+              <div class="kpi-yearly-period" id="kpi-yearly-period"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 直近来店 -->
+        <section class="card">
+          <div class="card-header"><h2>直近の来店</h2></div>
+          <div class="table-wrapper">
+            <table id="recent-visits-table">
+              <thead>
+                <tr>
+                  <th>日付</th>
+                  <th>顧客名</th>
+                  <th>ランク</th>
+                  <th class="num">人数</th>
+                  <th>プラン</th>
+                  <th class="num">前売売上</th>
+                  <th class="num">当日売上</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ===== 来店入力・履歴 ===== -->
+    <div class="page" id="page-visits">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1>来店入力</h1>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-primary" id="btn-add-visit">+ 来店記録を追加</button>
+        </div>
+      </header>
+      <main>
+        <!-- フィルタ -->
+        <div class="filter-bar">
+          <select id="visits-month-filter"></select>
+          <input type="text" id="visits-search" placeholder="顧客名で検索..." class="search-input">
+        </div>
+        <!-- TableCheck CSV取り込みは来客情報ページに移動 -->
+        <section class="card">
+          <div class="table-wrapper">
+            <table id="visits-table">
+              <thead>
+                <tr>
+                  <th>日付</th>
+                  <th>顧客名</th>
+                  <th>ランク</th>
+                  <th>経路</th>
+                  <th class="num">人数</th>
+                  <th>前売</th>
+                  <th>プラン</th>
+                  <th class="num">前売売上</th>
+                  <th class="num">当日売上</th>
+                  <th class="num">合計</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ===== 顧客管理 ===== -->
+    <div class="page" id="page-customers">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1>顧客管理</h1>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-primary" id="btn-add-customer">+ 顧客を追加</button>
+          <button class="btn btn-secondary" id="btn-add-deposit">+ 入金登録</button>
+          <button class="btn btn-secondary" id="btn-import-makuake">Makuake CSV取込</button>
+          <input type="file" id="makuake-csv-file" accept=".csv" style="display:none">
+        </div>
+      </header>
+      <main>
+        <div class="filter-bar">
+          <input type="text" id="customers-search" placeholder="顧客名・IDで検索..." class="search-input">
+          <select id="customers-rank-filter">
+            <option value="">全ランク</option>
+          </select>
+        </div>
+        <section class="card">
+          <div class="table-wrapper">
+            <table id="customers-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>氏名</th>
+                  <th>ふりがな</th>
+                  <th>ランク</th>
+                  <th>経路</th>
+                  <th class="num">入金総額</th>
+                  <th class="num">利用総額</th>
+                  <th class="num">消失額</th>
+                  <th class="num">残高</th>
+                  <th class="num">残チケット</th>
+                  <th class="num">来店回数</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ===== 営業カレンダー ===== -->
+    <div class="page" id="page-calendar">
+      <header class="topbar">
+        <div class="topbar-left" style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-secondary" id="cal-prev-month" style="padding:4px 10px">◀</button>
+          <span id="cal-month-label" style="font-size:18px;font-weight:700;margin:0 4px"></span>
+          <button class="btn btn-secondary" id="cal-next-month" style="padding:4px 10px">▶</button>
+        </div>
+      </header>
+      <main>
+        <section class="card" style="padding:16px;overflow-x:auto">
+          <table id="cal-table" style="width:100%;border-collapse:collapse;table-layout:fixed">
+            <thead>
+              <tr>
+                <th style="text-align:center;padding:8px;font-size:13px;color:var(--text-secondary)">月</th>
+                <th style="text-align:center;padding:8px;font-size:13px;color:var(--text-secondary)">火</th>
+                <th style="text-align:center;padding:8px;font-size:13px;color:var(--text-secondary)">水</th>
+                <th style="text-align:center;padding:8px;font-size:13px;color:var(--text-secondary)">木</th>
+                <th style="text-align:center;padding:8px;font-size:13px;color:var(--text-secondary)">金</th>
+                <th style="text-align:center;padding:8px;font-size:13px;color:#2563eb">土</th>
+                <th style="text-align:center;padding:8px;font-size:13px;color:#e53e3e">日</th>
+              </tr>
+            </thead>
+            <tbody id="cal-body"></tbody>
+          </table>
+        </section>
+        <!-- 日別シフト一覧 -->
+        <section class="card" style="margin-top:16px;padding:16px">
+          <h2 style="margin-bottom:12px">シフト一覧</h2>
+          <div class="table-wrapper">
+            <table id="shift-table" style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr>
+                  <th style="padding:6px 8px;text-align:left">日付</th>
+                  <th style="padding:6px 8px;text-align:left">曜日</th>
+                  <th style="padding:6px 8px;text-align:center">休み</th>
+                  <th style="padding:6px 8px;text-align:left">スタッフ</th>
+                  <th style="padding:6px 8px;text-align:center">※ケータリング</th>
+                  <th style="padding:6px 8px;text-align:left">人員</th>
+                  <th style="padding:6px 8px;text-align:left">メモ</th>
+                </tr>
+              </thead>
+              <tbody id="shift-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ===== 設定 ===== -->
+    <div class="page" id="page-settings">
+      <header class="topbar">
+        <div class="topbar-left"><h1>設定</h1></div>
+      </header>
+      <main>
+        <section class="card settings-section">
+          <h2>データソース設定</h2>
+          <p class="settings-desc">Google Apps Script のウェブアプリ URL を設定すると、スプレッドシートと連携できます。</p>
+          <label class="input-label" for="settings-gas-url">GAS エンドポイント URL</label>
+          <input type="url" id="settings-gas-url" placeholder="https://script.google.com/macros/s/xxxxx/exec" class="settings-input">
+          <div class="settings-actions">
+            <button class="btn btn-primary" id="btn-save-gas">保存して接続</button>
+            <button class="btn btn-secondary" id="btn-clear-gas">接続解除</button>
+          </div>
+        </section>
+
+        <section class="card settings-section">
+          <h2>月次予算</h2>
+          <p class="settings-desc">月ごとの売上目標を設定します。</p>
+          <div id="budget-list"></div>
+          <button class="btn btn-secondary" id="btn-add-budget">+ 月を追加</button>
+        </section>
+
+        <section class="card settings-section">
+          <h2>入金データ一括登録</h2>
+          <p class="settings-desc">Stripe購入データをスプレッドシートの会員一覧と照合し、入金シートに一括登録します。</p>
+          <div id="import-status" style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:var(--bg-secondary);display:none;font-size:0.85rem;white-space:pre-line;max-height:300px;overflow-y:auto"></div>
+          <div class="settings-actions">
+            <button class="btn btn-primary" id="btn-import-stripe">Stripe入金 177件を登録</button>
+            <button class="btn btn-primary" id="btn-fix-makuake-presale" style="margin-left:8px">Makuake前売売上を修正</button>
+          </div>
+        </section>
+
+        <section class="card settings-section">
+          <h2>データ管理</h2>
+          <p class="settings-desc">ローカルデータのエクスポート・インポートができます。</p>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" id="btn-export">JSONエクスポート</button>
+            <button class="btn btn-secondary" id="btn-import">JSONインポート</button>
+            <input type="file" id="import-file" accept=".json" style="display:none">
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- ===== 来店入力モーダル ===== -->
+  <div id="visit-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2 id="visit-modal-title">来店記録を追加</h2>
+        <button class="modal-close" data-dismiss="modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="visit-form">
+        <input type="hidden" id="vf-id">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="vf-date">日付</label>
+            <input type="date" id="vf-date" required>
+          </div>
+          <div class="form-group">
+            <label for="vf-customer">顧客</label>
+            <input type="text" id="vf-customer" placeholder="名前を入力..." list="customer-list" required autocomplete="off">
+            <datalist id="customer-list"></datalist>
+            <div class="form-hint" id="vf-customer-info"></div>
+          </div>
+          <div class="form-group">
+            <label for="vf-channel">経路</label>
+            <select id="vf-channel">
+              <option value="stripe">Stripe</option>
+              <option value="makuake">Makuake</option>
+              <option value="makuake_2">Makuake 2</option>
+              <option value="makuake_3">Makuake 3</option>
+              <option value="紹介">紹介</option>
+              <option value="身内">身内</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="vf-plan">プラン</label>
+            <select id="vf-plan">
+              <option value="尾崎牛/単品">尾崎牛/単品</option>
+              <option value="尾崎牛/インクルーシブ">尾崎牛/インクルーシブ</option>
+              <option value="尾崎牛/ペアリング">尾崎牛/ペアリング</option>
+              <option value="通常/単品">通常/単品</option>
+              <option value="通常/インクルーシブ">通常/インクルーシブ</option>
+              <option value="通常/ペアリング">通常/ペアリング</option>
+              <option value="中華コース">中華コース</option>
+              <option value="鍋プラン">鍋プラン</option>
+              <option value="会食プラン">会食プラン</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-divider">人数</div>
+        <div class="form-grid form-grid-3">
+          <div class="form-group">
+            <label for="vf-guests">利用人数</label>
+            <input type="number" id="vf-guests" min="1" value="2" required>
+          </div>
+          <div class="form-group">
+            <label for="vf-presale-guests">前売利用人数</label>
+            <input type="number" id="vf-presale-guests" min="0" value="2">
+          </div>
+          <div class="form-group">
+            <label for="vf-sameday-guests">当日利用人数</label>
+            <input type="number" id="vf-sameday-guests" min="0" value="0">
+          </div>
+        </div>
+
+        <div class="form-divider">金額</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="vf-unit-price">前売コース単価</label>
+            <input type="number" id="vf-unit-price" min="0" value="17600">
+          </div>
+          <div class="form-group">
+            <label for="vf-food-total">料理総額</label>
+            <input type="number" id="vf-food-total" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label for="vf-child-count">子供人数</label>
+            <input type="number" id="vf-child-count" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label for="vf-child-fee">子供料金</label>
+            <input type="number" id="vf-child-fee" min="0" value="0">
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="vf-airpay">当日会計</label>
+            <input type="number" id="vf-airpay" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label for="vf-drinks">当日ドリンク</label>
+            <input type="number" id="vf-drinks" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label for="vf-additional">追加料理</label>
+            <input type="number" id="vf-additional" min="0" value="0">
+          </div>
+        </div>
+
+        <!-- 計算結果プレビュー -->
+        <div class="calc-preview">
+          <div class="calc-row">
+            <span>前売売上</span>
+            <span class="calc-value" id="vf-calc-presale">-</span>
+          </div>
+          <div class="calc-row">
+            <span>当日売上</span>
+            <span class="calc-value" id="vf-calc-sameday">-</span>
+          </div>
+          <div class="calc-row calc-total">
+            <span>合計売上</span>
+            <span class="calc-value" id="vf-calc-total">-</span>
+          </div>
+          <div class="calc-row">
+            <span>残高変動</span>
+            <span class="calc-value" id="vf-calc-balance">-</span>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== 顧客追加モーダル ===== -->
+  <div id="customer-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="customer-modal-title">顧客を追加</h2>
+        <button class="modal-close" data-dismiss="modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="customer-form">
+        <input type="hidden" id="cf-id">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="cf-name">氏名</label>
+            <input type="text" id="cf-name" required>
+          </div>
+          <div class="form-group">
+            <label for="cf-kana">よみがな</label>
+            <input type="text" id="cf-kana">
+          </div>
+          <div class="form-group">
+            <label for="cf-rank">会員ランク</label>
+            <select id="cf-rank">
+              <option value="ブラック6">ブラック6</option>
+              <option value="ブラック8">ブラック8</option>
+              <option value="ブラック30">ブラック30</option>
+              <option value="プラチナ2">プラチナ2</option>
+              <option value="プラチナ4">プラチナ4</option>
+              <option value="VIP">VIP</option>
+              <option value="ゴールド1">ゴールド1</option>
+              <option value="ゴールド2">ゴールド2</option>
+              <option value="ゴールド4">ゴールド4</option>
+              <option value="早割ゴールド2">早割ゴールド2</option>
+              <option value="紹介_ゴールド">紹介_ゴールド</option>
+              <option value="ノーマル">ノーマル</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cf-channel">入会経路</label>
+            <select id="cf-channel">
+              <option value="stripe">Stripe</option>
+              <option value="makuake">Makuake</option>
+              <option value="makuake_2">Makuake 2</option>
+              <option value="makuake_3">Makuake 3</option>
+              <option value="紹介">紹介</option>
+              <option value="身内">身内</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cf-phone">電話番号</label>
+            <input type="tel" id="cf-phone">
+          </div>
+          <div class="form-group">
+            <label for="cf-memo">メモ</label>
+            <input type="text" id="cf-memo">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== 入金モーダル ===== -->
+  <div id="deposit-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>入金登録</h2>
+        <button class="modal-close" data-dismiss="modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="deposit-form">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="df-date">入金日</label>
+            <input type="date" id="df-date" required>
+          </div>
+          <div class="form-group">
+            <label for="df-customer">顧客</label>
+            <input type="text" id="df-customer" placeholder="名前を入力..." list="deposit-customer-list" required autocomplete="off">
+            <datalist id="deposit-customer-list"></datalist>
+          </div>
+          <div class="form-group">
+            <label for="df-channel">経路</label>
+            <select id="df-channel">
+              <option value="stripe">Stripe</option>
+              <option value="makuake">Makuake</option>
+              <option value="makuake_2">Makuake 2</option>
+              <option value="makuake_3">Makuake 3</option>
+              <option value="紹介">紹介</option>
+              <option value="身内">身内</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="df-amount">入金額</label>
+            <input type="number" id="df-amount" min="0" required>
+          </div>
+          <div class="form-group">
+            <label for="df-expires">有効期限</label>
+            <input type="date" id="df-expires">
+            <div class="form-hint">Makuakeは購入日+6ヶ月で自動設定。空欄=無期限</div>
+          </div>
+          <div class="form-group full-width">
+            <label for="df-memo">メモ</label>
+            <input type="text" id="df-memo" placeholder="ブラック会員権1名分+コース8名分 等">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-primary">登録</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== 顧客詳細モーダル ===== -->
+  <div id="customer-detail-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h2 id="cd-title">顧客詳細</h2>
+        <button class="modal-close" data-dismiss="modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="customer-detail-grid">
+        <div class="cd-info">
+          <div class="cd-stat"><span class="cd-label">ランク</span><span id="cd-rank" class="cd-value">-</span></div>
+          <div class="cd-stat"><span class="cd-label">経路</span><span id="cd-channel" class="cd-value">-</span></div>
+          <div class="cd-stat"><span class="cd-label">入金総額</span><span id="cd-total-deposit" class="cd-value">-</span></div>
+          <div class="cd-stat"><span class="cd-label">利用総額</span><span id="cd-total-used" class="cd-value">-</span></div>
+          <div class="cd-stat"><span class="cd-label">消失額</span><span id="cd-expired" class="cd-value">-</span></div>
+          <div class="cd-stat"><span class="cd-label">残高</span><span id="cd-balance" class="cd-value highlight">-</span></div>
+          <div class="cd-stat"><span class="cd-label">有効期限</span><span id="cd-expiry-info" class="cd-value">-</span></div>
+          <div class="cd-stat"><span class="cd-label">来店回数</span><span id="cd-visit-count" class="cd-value">-</span></div>
+        </div>
+      </div>
+      <h3 class="cd-section-title">チケット残数</h3>
+      <div id="cd-ticket-breakdown" style="margin-bottom:16px"></div>
+      <h3 class="cd-section-title">入金履歴</h3>
+      <div class="table-wrapper">
+        <table id="cd-deposits-table">
+          <thead><tr><th>日付</th><th>経路</th><th class="num">金額</th><th>有効期限</th><th>メモ</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <h3 class="cd-section-title">来店履歴</h3>
+      <div class="table-wrapper">
+        <table id="cd-visits-table">
+          <thead><tr><th>日付</th><th class="num">人数</th><th>プラン</th><th class="num">前売売上</th><th class="num">当日売上</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
