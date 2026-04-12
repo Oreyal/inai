@@ -6,6 +6,7 @@
 var SHEET_MEMBERS = '会員一覧';
 var SHEET_DEPOSITS = '入金';
 var SHEET_VISITS = '来店';
+var SHEET_GUESTS = '来客予定';
 
 function getSpreadsheet() {
   return SpreadsheetApp.getActiveSpreadsheet();
@@ -28,6 +29,9 @@ function doGet(e) {
     }
     if (action === 'all' || action === 'deposits') {
       result.deposits = readDeposits();
+    }
+    if (action === 'all' || action === 'guests') {
+      result.guests = readGuests();
     }
   } catch (err) {
     result.error = err.toString();
@@ -59,6 +63,7 @@ function doPost(e) {
       case 'deleteDeposits': result.deleted = deleteDeposits(data); break;
       case 'updateVisit': updateVisitRecord(data); break;
       case 'deleteVisit': result.deleted = deleteVisitRecord(data); break;
+      case 'saveGuests': saveGuests(data); break;
       default: result.status = 'unknown action: ' + action;
     }
   } catch (err) {
@@ -567,6 +572,63 @@ function deleteDeposits(ids) {
     sheet.deleteRow(rowsToDelete[r]);
   }
   return rowsToDelete.length;
+}
+
+// ============================================================
+// 来客予定 読み取り / 書き込み
+// シート「来客予定」: A=type(today/tomorrow), B=JSON
+// ============================================================
+function ensureGuestsSheet() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_GUESTS);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_GUESTS);
+    sheet.appendRow(['type', 'json']);
+    sheet.appendRow(['today', '[]']);
+    sheet.appendRow(['tomorrow', '[]']);
+  }
+  return sheet;
+}
+
+function readGuests() {
+  var sheet = ensureGuestsSheet();
+  var data = sheet.getDataRange().getValues();
+  var result = { today: [], tomorrow: [] };
+  for (var i = 1; i < data.length; i++) {
+    var type = String(data[i][0]);
+    var json = String(data[i][1] || '[]');
+    try {
+      if (type === 'today') result.today = JSON.parse(json);
+      if (type === 'tomorrow') result.tomorrow = JSON.parse(json);
+    } catch (e) {}
+  }
+  return result;
+}
+
+function saveGuests(data) {
+  var sheet = ensureGuestsSheet();
+  var allData = sheet.getDataRange().getValues();
+  var todayRow = -1, tomorrowRow = -1;
+  for (var i = 1; i < allData.length; i++) {
+    if (String(allData[i][0]) === 'today') todayRow = i + 1;
+    if (String(allData[i][0]) === 'tomorrow') tomorrowRow = i + 1;
+  }
+  if (data.today !== undefined) {
+    var json = JSON.stringify(data.today);
+    if (todayRow > 0) {
+      sheet.getRange(todayRow, 2).setValue(json);
+    } else {
+      sheet.appendRow(['today', json]);
+    }
+  }
+  if (data.tomorrow !== undefined) {
+    var json = JSON.stringify(data.tomorrow);
+    if (tomorrowRow > 0) {
+      sheet.getRange(tomorrowRow, 2).setValue(json);
+    } else {
+      sheet.appendRow(['tomorrow', json]);
+    }
+  }
 }
 
 function fmtDate(val) {

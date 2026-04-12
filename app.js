@@ -14,6 +14,11 @@
     gasUrl: '',
     currentPage: 'guests',
     dashboardMonth: '',
+    // 発注関連
+    suppliers: [],        // [{ id, name }]
+    supplierItems: {},    // { supplierId: [{ name, unit }] }
+    orders: [],           // [{ id, date, supplierId, supplierName, items: [{name, qty, unit}], memo }]
+    currentOrder: [],     // 作成中の発注品目リスト
   };
 
   // ─── Utilities ───
@@ -86,6 +91,9 @@
       todayGuests: state.todayGuests,
       tomorrowGuests: state.tomorrowGuests,
       calendarData: state.calendarData,
+      suppliers: state.suppliers,
+      supplierItems: state.supplierItems,
+      orders: state.orders,
     }));
   }
 
@@ -97,6 +105,9 @@
         if (d.todayGuests) state.todayGuests = d.todayGuests;
         if (d.tomorrowGuests) state.tomorrowGuests = d.tomorrowGuests;
         if (d.calendarData) state.calendarData = d.calendarData;
+        if (d.suppliers) state.suppliers = d.suppliers;
+        if (d.supplierItems) state.supplierItems = d.supplierItems;
+        if (d.orders) state.orders = d.orders;
         return d;
       } catch (e) { /* ignore */ }
     }
@@ -120,12 +131,21 @@
         state.visits = visitRes.visits || [];
         var depRes = await fetchGas('deposits');
         state.deposits = depRes.deposits || [];
-        // ローカルの予算・来客データを維持
+        // 来客予定をGASから取得
+        try {
+          var guestRes = await fetchGas('guests');
+          if (guestRes.guests) {
+            if (guestRes.guests.today && guestRes.guests.today.length > 0) state.todayGuests = guestRes.guests.today;
+            if (guestRes.guests.tomorrow && guestRes.guests.tomorrow.length > 0) state.tomorrowGuests = guestRes.guests.tomorrow;
+          }
+        } catch (ge) { console.warn('来客予定取得失敗:', ge); }
+        // ローカルの予算・カレンダーデータを維持
         var local = loadLocal();
         state.budgets = (local && local.budgets) ? local.budgets : [];
-        if (local && local.todayGuests) state.todayGuests = local.todayGuests;
-        if (local && local.tomorrowGuests) state.tomorrowGuests = local.tomorrowGuests;
         if (local && local.calendarData) state.calendarData = local.calendarData;
+        // GASに来客データがなければローカルから復元
+        if ((!state.todayGuests || state.todayGuests.length === 0) && local && local.todayGuests) state.todayGuests = local.todayGuests;
+        if ((!state.tomorrowGuests || state.tomorrowGuests.length === 0) && local && local.tomorrowGuests) state.tomorrowGuests = local.tomorrowGuests;
         updateConnectionStatus(true);
         saveLocal();
         return;
@@ -631,9 +651,14 @@
     state.currentPage = page;
     document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
     document.querySelectorAll('.nav-item').forEach(function (n) { n.classList.remove('active'); });
+    document.querySelectorAll('.mobile-nav-item').forEach(function (n) { n.classList.remove('active'); });
     document.getElementById('page-' + page).classList.add('active');
-    var navEl = document.querySelector('[data-page="' + page + '"]');
+    // サイドバーナビ
+    var navEl = document.querySelector('.sidebar [data-page="' + page + '"]');
     if (navEl) navEl.classList.add('active');
+    // モバイルナビ
+    var mobEl = document.querySelector('.mobile-nav [data-page="' + page + '"]');
+    if (mobEl) mobEl.classList.add('active');
     renderPage(page);
   }
 
@@ -644,34 +669,33 @@
       case 'visits': renderVisitsPage(); break;
       case 'customers': renderCustomersPage(); break;
       case 'calendar': renderCalendarPage(); break;
+      case 'orders': renderOrdersPage(); break;
       case 'settings': renderSettingsPage(); break;
     }
   }
 
   // ─── 来客情報ページ ───
   // ─── 来客情報ページ: CSV取り込み初期化 ───
-  function initGuestsCsvImport() {
-    var suffix = '-guests';
-
+  function initCsvImportForSuffix(suffix) {
     // 取り込みボタン
-    document.getElementById('btn-tc-import-guests').addEventListener('click', function () {
+    document.getElementById('btn-tc-import' + suffix).addEventListener('click', function () {
       importTableCheckCSV(suffix);
     });
 
     // ファイル選択
-    document.getElementById('tc-csv-file-guests').addEventListener('change', function (e) {
+    document.getElementById('tc-csv-file' + suffix).addEventListener('change', function (e) {
       var file = e.target.files[0];
       if (!file) return;
-      document.getElementById('tc-file-name-guests').textContent = file.name;
+      document.getElementById('tc-file-name' + suffix).textContent = file.name;
       var reader = new FileReader();
       reader.onload = function (ev) {
-        document.getElementById('tc-csv-input-guests').value = ev.target.result;
+        document.getElementById('tc-csv-input' + suffix).value = ev.target.result;
       };
       reader.readAsText(file, 'UTF-8');
     });
 
     // ドラッグ＆ドロップ
-    var dropZone = document.getElementById('tc-drop-zone-guests');
+    var dropZone = document.getElementById('tc-drop-zone' + suffix);
     dropZone.addEventListener('dragover', function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -691,10 +715,48 @@
       dropZone.style.background = '';
       var file = e.dataTransfer.files[0];
       if (!file) return;
-      document.getElementById('tc-file-name-guests').textContent = file.name;
+      document.getElementById('tc-file-name' + suffix).textContent = file.name;
       var reader = new FileReader();
       reader.onload = function (ev) {
-        document.getElementById('tc-csv-input-guests').value = ev.target.result;
+        document.getElementById('tc-csv-input' + suffix).value = ev.target.result;
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+  }
+
+  function initGuestsCsvImport() {
+    initCsvImportForSuffix('-guests');
+    initCsvImportForSuffix('-today');
+
+    // 当日セクション全体へのドラッグ＆ドロップ対応
+    var todaySection = document.querySelector('#guests-list').parentElement;
+    todaySection.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      todaySection.style.outline = '2px dashed var(--accent)';
+      todaySection.style.outlineOffset = '-2px';
+    });
+    todaySection.addEventListener('dragleave', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      todaySection.style.outline = '';
+      todaySection.style.outlineOffset = '';
+    });
+    todaySection.addEventListener('drop', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      todaySection.style.outline = '';
+      todaySection.style.outlineOffset = '';
+      var file = e.dataTransfer.files[0];
+      if (!file || !file.name.endsWith('.csv')) return;
+      // 折りたたみを開く
+      var details = document.getElementById('today-csv-section');
+      if (details) details.open = true;
+      document.getElementById('tc-file-name-today').textContent = file.name;
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        document.getElementById('tc-csv-input-today').value = ev.target.result;
+        importTableCheckCSV('-today');
       };
       reader.readAsText(file, 'UTF-8');
     });
@@ -713,6 +775,7 @@
       state.todayGuests = tomorrow;
       state.tomorrowGuests = [];
       saveLocal();
+      syncGuestsToGas();
       if (state.currentPage === 'guests') renderGuestsPage();
     }
   }
@@ -772,23 +835,45 @@
     var orderShort = (g.order || g.plan || '').replace(/\d+\s*×\s*/g, '').trim();
     if (orderShort.length > 30) orderShort = orderShort.substring(0, 30) + '...';
 
-    var html = '<div class="guest-card">' +
+    var isCancelled = !!g.cancelled;
+    var cardClass = 'guest-card' + (isCancelled ? ' guest-card--cancelled' : '');
+
+    // キャンセル/復元ボタン
+    var cancelBtn = '';
+    if (isCancelled) {
+      cancelBtn = '<button class="btn guest-restore-btn" data-prefix="' + prefix + '" data-idx="' + idx + '" title="予約を復元">復元</button>';
+    } else {
+      cancelBtn = '<button class="guest-cancel-btn" data-prefix="' + prefix + '" data-idx="' + idx + '" title="キャンセル">&times;</button>';
+    }
+
+    // 人数表示（タップで変更可能）
+    var countTag = '<span class="tag guest-count-tag" data-prefix="' + prefix + '" data-idx="' + idx + '" style="cursor:pointer">' +
+      (g.guestCount || 0) + '名' + (g.childCount > 0 ? ' + 子供' + g.childCount : '') + '</span>';
+
+    var nameStyle = isCancelled ? 'font-size:18px;font-weight:600;text-decoration:line-through;color:var(--text-tertiary)' : 'font-size:18px;font-weight:600';
+    var timeStyle = isCancelled ? 'font-size:20px;font-weight:700;color:var(--text-tertiary)' : 'font-size:20px;font-weight:700;color:var(--accent)';
+
+    var html = '<div class="' + cardClass + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">' +
         '<div style="flex:1;min-width:200px">' +
           '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
-            '<span style="font-size:20px;font-weight:700;color:var(--accent)">' + (g.time || '-') + '</span>' +
-            '<span style="font-size:18px;font-weight:600">' + (g.nameKana || g.customerName) + '</span>' +
+            '<span style="' + timeStyle + '">' + (g.time || '-') + '</span>' +
+            '<span style="' + nameStyle + '">' + (g.nameKana || g.customerName) + '</span>' +
             alertIcon +
+            (isCancelled ? '<span class="tag" style="background:var(--red-light);color:var(--red);font-size:11px">キャンセル</span>' : '') +
           '</div>' +
           '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px">' +
             '<span class="tag" style="background:var(--accent-light);color:var(--accent)">テーブル ' + (g.table || '-') + '</span>' +
-            '<span class="tag">' + (g.guestCount || 0) + '名' + (g.childCount > 0 ? ' + 子供' + g.childCount : '') + '</span>' +
+            countTag +
             balanceTag +
           '</div>' +
         '</div>' +
-        '<div style="text-align:right;font-size:13px;color:var(--text-secondary)">' +
-          '<div style="font-weight:500">' + (g.plan || '') + '</div>' +
-          '<div style="font-size:12px;margin-top:2px;color:var(--text-tertiary)">' + orderShort + '</div>' +
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">' +
+          cancelBtn +
+          '<div style="text-align:right;font-size:13px;color:var(--text-secondary)">' +
+            '<div style="font-weight:500">' + (g.plan || '') + '</div>' +
+            '<div style="font-size:12px;margin-top:2px;color:var(--text-tertiary)">' + orderShort + '</div>' +
+          '</div>' +
         '</div>' +
       '</div>';
 
@@ -800,8 +885,8 @@
       '</div>';
     }
 
-    // 当日のみ売上入力エリアを表示
-    if (isToday) {
+    // 当日のみ売上入力エリアを表示（キャンセル時は非表示）
+    if (isToday && !isCancelled) {
       var visitRecord = state.visits.find(function(v) { return v.id === g.id; });
       var currentAirpay = visitRecord ? (visitRecord.airpayAmount || 0) : (g.airpayAmount || 0);
       var currentDrinks = visitRecord ? (visitRecord.sameDayDrinks || 0) : (g.sameDayDrinks || 0);
@@ -831,10 +916,12 @@
     var todayDateLabel = todayList.length > 0 ? todayList[0].date : today();
     document.getElementById('guests-date-label').textContent = todayDateLabel;
 
-    var todayTotal = todayList.reduce(function(s, g) { return s + (g.guestCount || 0); }, 0);
-    // プラン別人数集計
+    var todayActive = todayList.filter(function(g) { return !g.cancelled; });
+    var todayCancelled = todayList.filter(function(g) { return !!g.cancelled; });
+    var todayTotal = todayActive.reduce(function(s, g) { return s + (g.guestCount || 0); }, 0);
+    // プラン別人数集計（キャンセル除外）
     var planCounts = {};
-    todayList.forEach(function(g) {
+    todayActive.forEach(function(g) {
       var plan = g.plan || '';
       var label = '';
       if (plan.indexOf('尾崎牛') >= 0 || plan.indexOf('尾崎') >= 0) label = '尾崎牛';
@@ -845,23 +932,21 @@
       if (label) planCounts[label] = (planCounts[label] || 0) + (g.guestCount || 0);
     });
     var planBreakdown = Object.keys(planCounts).map(function(k) { return k + planCounts[k] + '名'; }).join('、');
-    document.getElementById('guests-total-count').textContent = todayList.length + '組 / ' + todayTotal + '名' + (planBreakdown ? '　' + planBreakdown : '');
+    var cancelNote = todayCancelled.length > 0 ? '（取消' + todayCancelled.length + '組）' : '';
+    document.getElementById('guests-total-count').textContent = todayActive.length + '組 / ' + todayTotal + '名' + (planBreakdown ? '　' + planBreakdown : '') + cancelNote;
 
     if (todayList.length === 0) {
       todayContainer.innerHTML = '<div style="text-align:center;padding:32px 20px;color:var(--text-tertiary)"><p style="font-size:14px;margin:0">当日の来客情報がありません</p><p style="font-size:12px;margin-top:6px;color:var(--text-tertiary)">翌日分のCSVを取り込むと、7:00に自動で当日へ移行します</p></div>';
     } else {
-      todayList.sort(function(a, b) { return (a.time || '').localeCompare(b.time || ''); });
+      // キャンセル済みを下に、それ以外は時間順
+      todayList.sort(function(a, b) {
+        if (!!a.cancelled !== !!b.cancelled) return a.cancelled ? 1 : -1;
+        return (a.time || '').localeCompare(b.time || '');
+      });
       var todayHtml = '';
       todayList.forEach(function(g, idx) { todayHtml += renderGuestCard(g, idx, true); });
       todayContainer.innerHTML = todayHtml;
-
-      // 保存ボタンのイベント
-      document.querySelectorAll('.guest-save-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var idx = parseInt(this.getAttribute('data-idx'));
-          saveGuestSameDay(idx);
-        });
-      });
+      bindGuestCardEvents();
     }
 
     // --- CSV取り込みセクションの表示切替 ---
@@ -876,10 +961,12 @@
     var tmrwDate = hasTomorrow ? tmrwList[0].date : '';
     document.getElementById('tomorrow-date-label').textContent = tmrwDate || '';
 
-    var tmrwTotal = tmrwList.reduce(function(s, g) { return s + (g.guestCount || 0); }, 0);
-    // プラン別人数集計（翌日）
+    var tmrwActive = tmrwList.filter(function(g) { return !g.cancelled; });
+    var tmrwCancelled = tmrwList.filter(function(g) { return !!g.cancelled; });
+    var tmrwTotal = tmrwActive.reduce(function(s, g) { return s + (g.guestCount || 0); }, 0);
+    // プラン別人数集計（翌日、キャンセル除外）
     var tmrwPlanCounts = {};
-    tmrwList.forEach(function(g) {
+    tmrwActive.forEach(function(g) {
       var plan = g.plan || '';
       var label = '';
       if (plan.indexOf('尾崎牛') >= 0 || plan.indexOf('尾崎') >= 0) label = '尾崎牛';
@@ -890,12 +977,16 @@
       if (label) tmrwPlanCounts[label] = (tmrwPlanCounts[label] || 0) + (g.guestCount || 0);
     });
     var tmrwPlanBreakdown = Object.keys(tmrwPlanCounts).map(function(k) { return k + tmrwPlanCounts[k] + '名'; }).join('、');
-    document.getElementById('tomorrow-total-count').textContent = hasTomorrow ? tmrwList.length + '組 / ' + tmrwTotal + '名' + (tmrwPlanBreakdown ? '　' + tmrwPlanBreakdown : '') : '';
+    var tmrwCancelNote = tmrwCancelled.length > 0 ? '（取消' + tmrwCancelled.length + '組）' : '';
+    document.getElementById('tomorrow-total-count').textContent = hasTomorrow ? tmrwActive.length + '組 / ' + tmrwTotal + '名' + (tmrwPlanBreakdown ? '　' + tmrwPlanBreakdown : '') + tmrwCancelNote : '';
 
     if (!hasTomorrow) {
       tmrwContainer.innerHTML = '<div style="text-align:center;padding:32px 20px;color:var(--text-tertiary)"><p style="font-size:14px;margin:0">翌日の予約はまだ取り込まれていません</p><p style="font-size:12px;margin-top:6px;color:var(--text-tertiary)">上のCSV取り込みから予約情報を追加してください</p></div>';
     } else {
-      tmrwList.sort(function(a, b) { return (a.time || '').localeCompare(b.time || ''); });
+      tmrwList.sort(function(a, b) {
+        if (!!a.cancelled !== !!b.cancelled) return a.cancelled ? 1 : -1;
+        return (a.time || '').localeCompare(b.time || '');
+      });
       var tmrwHtml = '<div style="margin-bottom:10px;text-align:right">' +
         '<button class="btn btn-secondary" id="btn-reset-tomorrow" style="font-size:12px;padding:4px 12px">再取り込み</button>' +
         '</div>';
@@ -910,9 +1001,108 @@
         if (!confirm('翌日の来客情報をリセットして再取り込みしますか？')) return;
         state.tomorrowGuests = [];
         saveLocal();
+        syncGuestsToGas();
         renderGuestsPage();
       });
+      bindGuestCardEvents();
     }
+  }
+
+  // ゲストカードのイベント（キャンセル・復元・人数変更・保存）
+  function bindGuestCardEvents() {
+    // 保存ボタン
+    document.querySelectorAll('.guest-save-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var idx = parseInt(this.getAttribute('data-idx'));
+        saveGuestSameDay(idx);
+      });
+    });
+
+    // キャンセルボタン
+    document.querySelectorAll('.guest-cancel-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var prefix = this.getAttribute('data-prefix');
+        var idx = parseInt(this.getAttribute('data-idx'));
+        var list = prefix === 'today' ? state.todayGuests : state.tomorrowGuests;
+        var g = list[idx];
+        if (!g) return;
+        if (!confirm((g.nameKana || g.customerName) + ' 様の予約をキャンセルしますか？')) return;
+        g.cancelled = true;
+        saveLocal();
+        syncGuestsToGas();
+        renderGuestsPage();
+      });
+    });
+
+    // 復元ボタン
+    document.querySelectorAll('.guest-restore-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var prefix = this.getAttribute('data-prefix');
+        var idx = parseInt(this.getAttribute('data-idx'));
+        var list = prefix === 'today' ? state.todayGuests : state.tomorrowGuests;
+        var g = list[idx];
+        if (!g) return;
+        g.cancelled = false;
+        saveLocal();
+        syncGuestsToGas();
+        renderGuestsPage();
+      });
+    });
+
+    // 人数変更（タップで入力に切替）
+    document.querySelectorAll('.guest-count-tag').forEach(function(tag) {
+      tag.addEventListener('click', function() {
+        var prefix = this.getAttribute('data-prefix');
+        var idx = parseInt(this.getAttribute('data-idx'));
+        var list = prefix === 'today' ? state.todayGuests : state.tomorrowGuests;
+        var g = list[idx];
+        if (!g || g.cancelled) return;
+
+        var input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.inputMode = 'numeric';
+        input.value = g.guestCount || 0;
+        input.style.cssText = 'width:50px;padding:2px 4px;border:2px solid var(--accent);border-radius:4px;font-size:13px;text-align:center';
+        this.replaceWith(input);
+        input.focus();
+        input.select();
+
+        function saveCount() {
+          var newCount = parseInt(input.value) || 0;
+          if (newCount < 0) newCount = 0;
+          if (newCount !== g.guestCount) {
+            g.guestCount = newCount;
+            // 前売人数が人数を超えないよう調整
+            if (g.preSaleGuests > newCount) g.preSaleGuests = newCount;
+            saveLocal();
+            syncGuestsToGas();
+          }
+          renderGuestsPage();
+        }
+
+        input.addEventListener('blur', saveCount);
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') { e.preventDefault(); saveCount(); }
+        });
+      });
+    });
+  }
+
+  // 来客予定をGASに同期
+  function syncGuestsToGas() {
+    if (!state.gasUrl) return;
+    fetch(state.gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'saveGuests',
+        data: {
+          today: state.todayGuests || [],
+          tomorrow: state.tomorrowGuests || [],
+        }
+      }),
+    }).catch(function(e) { console.warn('来客予定の同期失敗:', e); });
   }
 
   async function saveGuestSameDay(idx) {
@@ -952,6 +1142,7 @@
       }
     }
     saveLocal();
+    syncGuestsToGas();
   }
 
   // ─── Dashboard ───
@@ -1081,13 +1272,13 @@
   }
 
   function renderRecentVisits() {
-    // 直近2日分の日付を取得
+    // 直近5日分の日付を取得
     var allDates = [];
     state.visits.forEach(function (v) {
       if (allDates.indexOf(v.date) < 0) allDates.push(v.date);
     });
     allDates.sort(function (a, b) { return b.localeCompare(a); });
-    var recentDates = allDates.slice(0, 2);
+    var recentDates = allDates.slice(0, 5);
 
     var monthVisits = state.visits
       .filter(function (v) { return recentDates.indexOf(v.date) >= 0; })
@@ -1099,16 +1290,119 @@
       var cust = getCustomerById(v.customerId);
       var name = cust ? cust.name : (v.customerName || v.customerId || '');
       var rank = cust ? cust.rank : (v.rank || '');
-      return '<tr>' +
+      var sameDayVal = rev.sameDay;
+      var noSales = (v.airpayAmount || 0) === 0 && (v.sameDayDrinks || 0) === 0 && (v.additionalCharges || 0) === 0;
+      var sameDayCell = noSales
+        ? '<span style="color:var(--red);font-weight:600">未入力</span>'
+        : fmtYen(sameDayVal);
+      return '<tr' + (noSales ? ' style="background:var(--amber-light)"' : '') + '>' +
         '<td>' + v.date + '</td>' +
         '<td style="font-weight:500">' + name + '</td>' +
         '<td><span class="tag tag-rank">' + rank + '</span></td>' +
         '<td class="num">' + (v.guestCount || 0) + '名</td>' +
         '<td>' + (v.plan || '') + '</td>' +
         '<td class="num">' + fmtYen(rev.preSale) + '</td>' +
-        '<td class="num">' + fmtYen(rev.sameDay) + '</td>' +
+        '<td class="num">' + sameDayCell + '</td>' +
+        '<td><button class="row-btn recent-edit-btn" data-id="' + v.id + '">編集</button></td>' +
         '</tr>';
     }).join('');
+
+    // 編集ボタンのイベント
+    tbody.querySelectorAll('.recent-edit-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openSalesEditModal(this.dataset.id);
+      });
+    });
+  }
+
+  // 売上簡易編集モーダル
+  function openSalesEditModal(visitId) {
+    var v = state.visits.find(function (x) { return x.id === visitId; });
+    if (!v) return;
+    var cust = getCustomerById(v.customerId);
+    var name = cust ? cust.name : (v.customerName || v.customerId || '');
+
+    // 既存モーダルを流用せず、動的に作成
+    var existing = document.getElementById('sales-edit-modal');
+    if (existing) existing.remove();
+
+    var modal = document.createElement('div');
+    modal.id = 'sales-edit-modal';
+    modal.className = 'modal';
+    modal.innerHTML =
+      '<div class="modal-backdrop" id="sales-edit-backdrop"></div>' +
+      '<div class="modal-content" style="max-width:400px">' +
+        '<div class="modal-header">' +
+          '<h2>売上入力</h2>' +
+          '<button class="modal-close" id="sales-edit-close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
+        '</div>' +
+        '<div style="margin-bottom:16px">' +
+          '<div style="font-size:14px;font-weight:600">' + name + '</div>' +
+          '<div style="font-size:12px;color:var(--text-tertiary)">' + v.date + '　' + (v.guestCount || 0) + '名　' + (v.plan || '') + '</div>' +
+        '</div>' +
+        '<div class="form-grid" style="grid-template-columns:1fr">' +
+          '<div class="form-group">' +
+            '<label>Airpay金額（当日会計）</label>' +
+            '<input type="number" id="se-airpay" value="' + (v.airpayAmount || 0) + '">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>当日ドリンク</label>' +
+            '<input type="number" id="se-drinks" value="' + (v.sameDayDrinks || 0) + '">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>追加料理</label>' +
+            '<input type="number" id="se-additional" value="' + (v.additionalCharges || 0) + '">' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-secondary" id="se-cancel">キャンセル</button>' +
+          '<button class="btn btn-primary" id="se-save">保存</button>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+
+    // イベント
+    var close = function () { modal.remove(); };
+    document.getElementById('sales-edit-backdrop').addEventListener('click', close);
+    document.getElementById('sales-edit-close').addEventListener('click', close);
+    document.getElementById('se-cancel').addEventListener('click', close);
+
+    document.getElementById('se-save').addEventListener('click', async function () {
+      var airpay = parseInt(document.getElementById('se-airpay').value) || 0;
+      var drinks = parseInt(document.getElementById('se-drinks').value) || 0;
+      var additional = parseInt(document.getElementById('se-additional').value) || 0;
+
+      v.airpayAmount = airpay;
+      v.sameDayDrinks = drinks;
+      v.additionalCharges = additional;
+      saveLocal();
+
+      // GASに保存
+      if (state.gasUrl) {
+        try {
+          await fetch(state.gasUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+              action: 'updateVisit',
+              data: {
+                id: v.id,
+                airpayAmount: airpay,
+                sameDayDrinks: drinks,
+                additionalCharges: additional,
+              }
+            }),
+          });
+        } catch (e) {
+          console.warn('GAS更新失敗:', e);
+        }
+      }
+
+      close();
+      showToast(name + ' の売上を保存しました');
+      renderDashboard();
+    });
   }
 
   // ─── Expiry Warnings ───
@@ -2246,6 +2540,7 @@
     initMakuakeImport();
     initGuestsCsvImport();
     initCalendarPage();
+    initOrders();
     initSettings();
     scheduleGuestTransition();
 
@@ -2987,8 +3282,8 @@
     previewEl.style.display = 'block';
     statusEl.textContent = results.length + '件の予約を検出（マッチ: ' + results.filter(function(r){return r.matched}).length + '件）';
 
-    // 翌日来客情報として保存（7:00に当日へ自動移行）
-    state.tomorrowGuests = results.map(function(r) {
+    // 来客情報として保存（当日ならtodayGuests、それ以外ならtomorrowGuests）
+    var guestData = results.map(function(r) {
       // 既存の来店レコードがあればその当日売上値を引き継ぐ
       var existing = state.visits.find(function(v) { return v.id === 'TC_' + r.reservationId; });
       return {
@@ -3015,8 +3310,15 @@
         childFee: existing ? (existing.childFee || 0) : 0,
       };
     });
+    // CSVの日付が当日なら todayGuests に直接保存
+    var csvDate = results.length > 0 ? results[0].date : '';
+    if (csvDate === today()) {
+      state.todayGuests = guestData;
+    } else {
+      state.tomorrowGuests = guestData;
+    }
     saveLocal();
-    // 翌日セクションを即時描画
+    syncGuestsToGas();
     if (state.currentPage === 'guests') renderGuestsPage();
 
     // 登録ボタン
@@ -3397,6 +3699,303 @@
       console.log('修正完了');
     },
   };
+
+  // ============================================================
+  // 発注機能
+  // ============================================================
+
+  function initOrders() {
+    // 仕入れ先選択時
+    document.getElementById('order-supplier').addEventListener('change', function () {
+      var sid = this.value;
+      var area = document.getElementById('order-items-area');
+      area.style.display = sid ? '' : 'none';
+      state.currentOrder = [];
+      renderCurrentOrderItems();
+      populateItemSelect(sid);
+    });
+
+    // 品目追加
+    document.getElementById('btn-order-add-item').addEventListener('click', function () {
+      var selectVal = document.getElementById('order-item-select').value;
+      var customVal = document.getElementById('order-item-custom').value.trim();
+      var name = customVal || selectVal;
+      var qty = document.getElementById('order-item-qty').value.trim();
+      var unit = document.getElementById('order-item-unit').value;
+      if (!name) { showToast('品目を選択または入力してください', true); return; }
+      if (!qty) { showToast('数量を入力してください', true); return; }
+      state.currentOrder.push({ name: name, qty: qty, unit: unit });
+      renderCurrentOrderItems();
+      // 入力をリセット
+      document.getElementById('order-item-select').value = '';
+      document.getElementById('order-item-custom').value = '';
+      document.getElementById('order-item-qty').value = '';
+      // 品目マスタに未登録なら追加
+      var sid = document.getElementById('order-supplier').value;
+      if (sid && customVal) {
+        var items = state.supplierItems[sid] || [];
+        var exists = items.some(function (i) { return i.name === customVal; });
+        if (!exists) {
+          items.push({ name: customVal, unit: unit });
+          state.supplierItems[sid] = items;
+          saveLocal();
+          populateItemSelect(sid);
+        }
+      }
+    });
+
+    // LINEにコピー
+    document.getElementById('btn-order-copy-line').addEventListener('click', function () {
+      if (state.currentOrder.length === 0) { showToast('品目を追加してください', true); return; }
+      var sid = document.getElementById('order-supplier').value;
+      var supplier = state.suppliers.find(function (s) { return s.id === sid; });
+      var date = document.getElementById('order-date').value;
+      var memo = document.getElementById('order-memo').value.trim();
+
+      var youbi = ['日','月','火','水','木','金','土'];
+      var d = new Date(date);
+      var dateStr = date + '（' + youbi[d.getDay()] + '）';
+      var deliveryTime = document.getElementById('order-delivery-time').value;
+      var text = 'お世話になっております。\n' + dateStr + (deliveryTime ? ' ' + deliveryTime : '') + ' で下記発注をお願いします。\n\n';
+      state.currentOrder.forEach(function (item) {
+        text += '・' + item.name + '　' + item.qty + item.unit + '\n';
+      });
+      if (memo) text += '\n※' + memo;
+
+      navigator.clipboard.writeText(text).then(function () {
+        showToast('LINEにコピーしました！貼り付けて送信してください');
+      }).catch(function () {
+        // フォールバック: テキストエリアでコピー
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('LINEにコピーしました！');
+      });
+    });
+
+    // 保存
+    document.getElementById('btn-order-save').addEventListener('click', function () {
+      if (state.currentOrder.length === 0) { showToast('品目を追加してください', true); return; }
+      var sid = document.getElementById('order-supplier').value;
+      var supplier = state.suppliers.find(function (s) { return s.id === sid; });
+      var date = document.getElementById('order-date').value;
+      var memo = document.getElementById('order-memo').value.trim();
+
+      var deliveryTime = document.getElementById('order-delivery-time').value.trim();
+      var order = {
+        id: 'ORD_' + Date.now(),
+        date: date,
+        supplierId: sid,
+        supplierName: supplier ? supplier.name : '',
+        items: state.currentOrder.slice(),
+        memo: memo,
+        deliveryTime: deliveryTime,
+      };
+      state.orders.unshift(order);
+      saveLocal();
+      showToast('発注を保存しました');
+      // リセット
+      state.currentOrder = [];
+      document.getElementById('order-supplier').value = '';
+      document.getElementById('order-items-area').style.display = 'none';
+      document.getElementById('order-memo').value = '';
+      renderOrderHistory();
+    });
+
+    // クリア
+    document.getElementById('btn-order-clear').addEventListener('click', function () {
+      state.currentOrder = [];
+      renderCurrentOrderItems();
+      document.getElementById('order-memo').value = '';
+    });
+
+    // 仕入れ先追加
+    document.getElementById('btn-add-supplier').addEventListener('click', function () {
+      var name = prompt('仕入れ先の名前を入力:');
+      if (!name || !name.trim()) return;
+      var id = 'SUP_' + Date.now();
+      state.suppliers.push({ id: id, name: name.trim() });
+      state.supplierItems[id] = [];
+      saveLocal();
+      renderOrdersPage();
+      showToast(name.trim() + ' を追加しました');
+    });
+  }
+
+  function populateItemSelect(supplierId) {
+    var sel = document.getElementById('order-item-select');
+    sel.innerHTML = '<option value="">選択 or 下に直接入力</option>';
+    var items = state.supplierItems[supplierId] || [];
+    items.forEach(function (item) {
+      var opt = document.createElement('option');
+      opt.value = item.name;
+      opt.textContent = item.name + '（' + item.unit + '）';
+      sel.appendChild(opt);
+    });
+    // 選択時に単位も自動設定
+    sel.addEventListener('change', function () {
+      var selected = items.find(function (i) { return i.name === sel.value; });
+      if (selected) {
+        document.getElementById('order-item-unit').value = selected.unit;
+      }
+    });
+  }
+
+  function renderCurrentOrderItems() {
+    var container = document.getElementById('order-items-list');
+    if (state.currentOrder.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:13px">品目を追加してください</div>';
+      return;
+    }
+    var html = '<table><thead><tr><th>品目</th><th class="num">数量</th><th>単位</th><th></th></tr></thead><tbody>';
+    state.currentOrder.forEach(function (item, idx) {
+      html += '<tr>' +
+        '<td>' + item.name + '</td>' +
+        '<td class="num">' + item.qty + '</td>' +
+        '<td>' + item.unit + '</td>' +
+        '<td><button class="row-btn danger order-remove-item" data-idx="' + idx + '">削除</button></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    // 削除ボタン
+    container.querySelectorAll('.order-remove-item').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.currentOrder.splice(parseInt(this.dataset.idx), 1);
+        renderCurrentOrderItems();
+      });
+    });
+  }
+
+  function renderOrderHistory() {
+    var container = document.getElementById('order-history-list');
+    if (state.orders.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-tertiary);font-size:13px">発注履歴はありません</div>';
+      return;
+    }
+    var html = '';
+    state.orders.forEach(function (order, idx) {
+      var itemsSummary = order.items.map(function (i) { return i.name + ' ' + i.qty + i.unit; }).join('、');
+      html += '<div class="order-history-item" style="padding:12px 0;border-bottom:1px solid var(--border-light)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+          '<div>' +
+            '<span style="font-weight:600;margin-right:8px">' + order.supplierName + '</span>' +
+            '<span style="font-size:12px;color:var(--text-tertiary)">' + order.date + '</span>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px">' +
+            '<button class="row-btn order-recopy" data-idx="' + idx + '" title="再コピー">コピー</button>' +
+            '<button class="row-btn danger order-delete" data-idx="' + idx + '">削除</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--text-secondary)">' + itemsSummary + '</div>' +
+        (order.memo ? '<div style="font-size:12px;color:var(--text-tertiary);margin-top:2px">※' + order.memo + '</div>' : '') +
+      '</div>';
+    });
+    container.innerHTML = html;
+
+    // 再コピー
+    container.querySelectorAll('.order-recopy').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var order = state.orders[parseInt(this.dataset.idx)];
+        var youbi = ['日','月','火','水','木','金','土'];
+        var d = new Date(order.date);
+        var dateStr = order.date + '（' + youbi[d.getDay()] + '）';
+        var text = 'お世話になっております。\n' + dateStr + (order.deliveryTime ? ' ' + order.deliveryTime : '') + ' で下記発注をお願いします。\n\n';
+        order.items.forEach(function (item) { text += '・' + item.name + '　' + item.qty + item.unit + '\n'; });
+        if (order.memo) text += '\n※' + order.memo;
+        navigator.clipboard.writeText(text).then(function () { showToast('コピーしました'); });
+      });
+    });
+
+    // 削除
+    container.querySelectorAll('.order-delete').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('この発注記録を削除しますか？')) return;
+        state.orders.splice(parseInt(this.dataset.idx), 1);
+        saveLocal();
+        renderOrderHistory();
+      });
+    });
+  }
+
+  function renderSupplierMaster() {
+    var container = document.getElementById('supplier-master-list');
+    if (state.suppliers.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-tertiary);font-size:13px">仕入れ先を追加してください</div>';
+      return;
+    }
+    var html = '';
+    state.suppliers.forEach(function (sup) {
+      var items = state.supplierItems[sup.id] || [];
+      var itemNames = items.map(function (i) { return i.name; }).join('、');
+      html += '<div style="padding:12px 0;border-bottom:1px solid var(--border-light)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+          '<span style="font-weight:600">' + sup.name + '</span>' +
+          '<div style="display:flex;gap:4px">' +
+            '<button class="row-btn supplier-add-item" data-id="' + sup.id + '">+ 品目</button>' +
+            '<button class="row-btn danger supplier-delete" data-id="' + sup.id + '">削除</button>' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-tertiary)">' + (itemNames || '品目未登録') + '</div>' +
+      '</div>';
+    });
+    container.innerHTML = html;
+
+    // 品目追加
+    container.querySelectorAll('.supplier-add-item').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var sid = this.dataset.id;
+        var name = prompt('品目名を入力:');
+        if (!name || !name.trim()) return;
+        var unit = prompt('単位を入力（例: 本, kg, パック）:', '個');
+        if (!unit) unit = '個';
+        var items = state.supplierItems[sid] || [];
+        items.push({ name: name.trim(), unit: unit.trim() });
+        state.supplierItems[sid] = items;
+        saveLocal();
+        renderSupplierMaster();
+      });
+    });
+
+    // 仕入れ先削除
+    container.querySelectorAll('.supplier-delete').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var sid = this.dataset.id;
+        var sup = state.suppliers.find(function (s) { return s.id === sid; });
+        if (!confirm(sup.name + ' を削除しますか？')) return;
+        state.suppliers = state.suppliers.filter(function (s) { return s.id !== sid; });
+        delete state.supplierItems[sid];
+        saveLocal();
+        renderOrdersPage();
+      });
+    });
+  }
+
+  function renderOrdersPage() {
+    // 仕入れ先プルダウン更新
+    var sel = document.getElementById('order-supplier');
+    var currentVal = sel.value;
+    sel.innerHTML = '<option value="">選択してください</option>';
+    state.suppliers.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      sel.appendChild(opt);
+    });
+    sel.value = currentVal;
+
+    // 発注日デフォルト
+    var dateInput = document.getElementById('order-date');
+    if (!dateInput.value) dateInput.value = today();
+
+    renderCurrentOrderItems();
+    renderOrderHistory();
+    renderSupplierMaster();
+  }
 
   document.addEventListener('DOMContentLoaded', init);
 })();
