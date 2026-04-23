@@ -1,6 +1,10 @@
 (() => {
   'use strict';
 
+  // GAS Web App URL — デプロイ後にここへ /exec URL を貼る（catering/gas-catering.js 参照）。
+  // 空文字の場合は送信せず、成功UIだけ表示（開発用フォールバック）。
+  const CATERING_FORM_ENDPOINT = '';
+
   // ===== Header scroll state =====
   const header = document.getElementById('siteHeader');
   const onScroll = () => {
@@ -84,22 +88,47 @@
       }
 
       const submitBtn = document.getElementById('submitBtn');
+      const submitLabel = submitBtn.textContent;
       submitBtn.disabled = true;
       submitBtn.textContent = '送信中…';
 
-      // TODO: 送信先エンドポイント未定（要件定義で論点として残している）。
-      // 候補: Google Apps Script Web App / Formspree / 独自バックエンド。
-      // 確定後、以下の setTimeout を fetch(endpoint, { method: 'POST', body: ... }) に置換する。
       const formData = new FormData(form);
       const payload = Object.fromEntries(formData.entries());
       payload.scene = formData.getAll('scene');
-      console.info('[contact] dummy submit payload:', payload);
+      payload.userAgent = navigator.userAgent;
 
-      setTimeout(() => {
+      const showSuccess = () => {
         form.hidden = true;
         success.hidden = false;
         success.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 600);
+      };
+      const showError = () => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = submitLabel;
+        alert('送信に失敗しました。時間をおいて再度お試しいただくか、お電話にてご連絡ください。');
+      };
+
+      if (!CATERING_FORM_ENDPOINT) {
+        console.info('[contact] endpoint未設定のため送信スキップ (dev fallback):', payload);
+        setTimeout(showSuccess, 600);
+        return;
+      }
+
+      // GAS Web App へ POST。text/plain にして CORS プリフライトを回避。
+      fetch(CATERING_FORM_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      })
+        .then((res) => res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)))
+        .then((json) => {
+          if (json && json.ok) showSuccess();
+          else throw new Error(json && json.error ? json.error : 'unknown');
+        })
+        .catch((err) => {
+          console.error('[contact] submit failed:', err);
+          showError();
+        });
     });
   }
 })();
