@@ -28,7 +28,7 @@
 
   // ===== Scroll reveal =====
   const revealTargets = document.querySelectorAll(
-    '.section-head, .concept-text, .concept-visual, .service-card, .plan-card, .scene-item, .flow-list li, .faq-list details, .contact-form'
+    '.section-head, .concept-text, .concept-visual, .service-card, .reason-card, .plan-card, .case-card, .scene-item, .flow-list li, .faq-list details, .contact-form'
   );
   revealTargets.forEach(el => el.classList.add('reveal'));
 
@@ -57,7 +57,7 @@
     form.addEventListener('submit', (e) => {
       e.preventDefault();
 
-      const required = ['name', 'email', 'date', 'people'];
+      const required = ['company', 'department', 'name', 'email', 'date', 'people'];
       let firstInvalid = null;
       required.forEach((key) => {
         const el = form.elements.namedItem(key);
@@ -68,10 +68,16 @@
           el.style.borderColor = '';
         }
       });
-      const agree = document.getElementById('agree');
-      if (!agree.checked) {
-        if (!firstInvalid) firstInvalid = agree;
+
+      const emailEl = form.elements.namedItem('email');
+      if (emailEl && emailEl.value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailEl.value.trim())) {
+        emailEl.style.borderColor = '#b94040';
+        if (!firstInvalid) firstInvalid = emailEl;
       }
+
+      const agree = document.getElementById('agree');
+      if (!agree.checked && !firstInvalid) firstInvalid = agree;
+
       if (firstInvalid) {
         firstInvalid.focus();
         return;
@@ -81,8 +87,14 @@
       submitBtn.disabled = true;
       submitBtn.textContent = '送信中…';
 
-      // NOTE: Submission endpoint is not wired up yet.
-      // Replace this simulated delay with a real POST to the chef's inbox / GAS endpoint.
+      // TODO: 送信先エンドポイント未定（要件定義で論点として残している）。
+      // 候補: Google Apps Script Web App / Formspree / 独自バックエンド。
+      // 確定後、以下の setTimeout を fetch(endpoint, { method: 'POST', body: ... }) に置換する。
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      payload.scene = formData.getAll('scene');
+      console.info('[contact] dummy submit payload:', payload);
+
       setTimeout(() => {
         form.hidden = true;
         success.hidden = false;
