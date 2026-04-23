@@ -1,9 +1,9 @@
 (() => {
   'use strict';
 
-  // GAS Web App URL — デプロイ後にここへ /exec URL を貼る（catering/gas-catering.js 参照）。
+  // GAS Web App URL — catering/gas-catering.js をデプロイした Web App の /exec URL。
   // 空文字の場合は送信せず、成功UIだけ表示（開発用フォールバック）。
-  const CATERING_FORM_ENDPOINT = '';
+  const CATERING_FORM_ENDPOINT = 'https://script.google.com/macros/s/AKfycby89xjU_7OvfsHy8D8P6O1nL966aqJEIjQM-AaR9xABjj6wxvQgVjz4CRd_Fuh3cy2S/exec';
 
   // ===== Header scroll state =====
   const header = document.getElementById('siteHeader');
